@@ -78,16 +78,16 @@ def getFaceKeypoints(poses):
 # keypoints = [(0.16992188, 0.5234375), (0.16992188, 0.62597656), (0.19140625, 0.7089844), (0.21191406, 0.7919922), (0.234375, 0.875), (0.31835938, 0.93652344), (0.3828125, 0.9785156), (0.44628906, 0.99902344), (0.5107422, 0.99902344), (0.57421875, 0.9785156), (0.61621094, 0.93652344), (0.6376953, 0.8544922), (0.68066406, 0.7714844), (0.7011719, 0.7089844), (0.72265625, 0.6269531), (0.72265625, 0.5644531), (0.72265625, 0.5019531), (0.234375, 0.4609375), (0.2763672, 0.41992188), (0.3408203, 0.39941406), (0.4248047, 0.39941406), (0.46777344, 0.41992188), (0.57421875, 0.4189453), (0.61621094, 0.3984375), (0.6591797, 0.3779297), (0.7011719, 0.3984375), (0.72265625, 0.41992188), (0.53125, 0.4814453), (0.53125, 0.5234375), (0.5527344, 0.58496094), (0.5527344, 0.6269531), (0.46777344, 0.66796875), (0.5097656, 0.66796875), (0.53125, 0.68847656), (0.5732422, 0.66796875), (0.59472656, 0.66796875), (0.31835938, 0.5019531), (0.36132812, 0.4609375), (0.4033203, 0.4609375), (0.42578125, 0.5019531), (0.4033203, 0.5029297), (0.36132812, 0.5029297), (0.57421875, 0.48242188), (0.61621094, 0.4609375), (0.6582031, 0.4609375), (0.6796875, 0.4814453), (0.6582031, 0.48242188), (0.61621094, 0.48242188), (0.36132812, 0.75097656), (0.4248047, 0.7294922), (0.4892578, 0.7089844), (0.53125, 0.70996094), (0.5732422, 0.7089844), (0.61621094, 0.70996094), (0.6376953, 0.75097656), (0.5957031, 0.8330078), (0.5732422, 0.8955078), (0.53125, 0.8955078), (0.46777344, 0.8955078), (0.40429688, 0.8544922), (0.36132812, 0.75097656), (0.4892578, 0.75), (0.53125, 0.75), (0.5732422, 0.73046875), (0.61621094, 0.75097656), (0.5732422, 0.8339844), (0.53125, 0.8544922), (0.46777344, 0.8544922), (0.38183594, 0.4814453), (0.6171875, 0.4609375), (-0.0009765625, -0.0009765625)]
 
 
-def draw_colored_keypoints(keypoints):
+def draw_colored_keypoints(keypoints, resolution=512):
     # 假设 'keypoints' 是您已经有的所有关键点的坐标列表
     # keypoints = [(x1, y1), (x2, y2), ..., (xn, yn)]
 
     # 初始化一个空白512x512的图像
-    img = Image.new('RGB', (512, 512), 'black')
+    img = Image.new('RGB', (resolution, resolution), 'black')
     draw = ImageDraw.Draw(img)
 
     # 将关键点坐标转换为像素坐标
-    scaled_keypoints = [(x * 512, y * 512) for x, y in keypoints]
+    scaled_keypoints = [(x * resolution, y * resolution) for x, y in keypoints]
 
     # 修改get_color函数，接受一个颜色系基准和索引
     def get_color(base_color, index):
@@ -221,20 +221,20 @@ class ImagePreprocessingNode:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "ref_image": ("IMAGE",),  # 直接输入图像（可选）
+                "ref_image": ("IMAGE",)  # 直接输入图像（可选）
                 
                 # "mode": ([, "path_Input"], {"default": "direct_Input"})  # 选择模式
+            },
+            "optional": {
+                 "resolution": ("INT", {"default": 512, "min": 64, "max": 2048, "step": 64})
             }
-            # "optional": {
-            #     "ref_images_path": ("STRING", {"default": "path/to/images"})  # 图像文件夹路径
-            # }
         }
 
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "preprocess_image"
     CATEGORY = "ControlPreprocessHaruhi"
   
-    def preprocess_image(self, ref_image=None, ref_images_path=None):
+    def preprocess_image(self, ref_image=None, resolution=512):
         # 使用传入的参数更新类属性
         # ref_image = ref_image if ref_image is not None else ref_image
         # ref_images_path = ref_images_path if ref_images_path is not None else ref_images_path
@@ -249,7 +249,7 @@ class ImagePreprocessingNode:
                     lsd_img_ = lsd_img(np_img_uint8)
                     poses = getPoses(np_img_uint8)
                     keypoints = getFaceKeypoints(poses)
-                    colored_img = draw_colored_keypoints(keypoints)
+                    colored_img = draw_colored_keypoints(keypoints, resolution=resolution)
                     # colored_img.show()
                     # lsd_img_.show()
                     blended_image = blend_images(colored_img, lsd_img_)
