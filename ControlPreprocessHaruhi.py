@@ -211,7 +211,7 @@ def convert_images_to_tensor(image_list):
     return output_images_list
 
 
-class ImagePreprocessingNode:
+class ImagePreprocessingNode_mix_v1:
     def __init__(self, ref_image=None):
         self.ref_image = ref_image
         # self.ref_images_path = ref_images_path
@@ -231,7 +231,7 @@ class ImagePreprocessingNode:
         }
 
     RETURN_TYPES = ("IMAGE",)
-    FUNCTION = "preprocess_image"
+    FUNCTION = "preprocess_image_mix_v1"
     CATEGORY = "ControlPreprocessHaruhi"
   
     def preprocess_image(self, ref_image=None, resolution=512):
@@ -266,16 +266,71 @@ class ImagePreprocessingNode:
         else:
             raise ValueError("No Face received")
 
+class ImagePreprocessingNode_facepose_v2:
+    def __init__(self, ref_image=None):
+        self.ref_image = ref_image
+        # self.ref_images_path = ref_images_path
+        # self.mode = mode
 
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "ref_image": ("IMAGE",)  # 直接输入图像（可选）
+                
+                # "mode": ([, "path_Input"], {"default": "direct_Input"})  # 选择模式
+            },
+            "optional": {
+                 "resolution": ("INT", {"default": 512, "min": 64, "max": 2048, "step": 64})
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    FUNCTION = "preprocess_image_facepose_v2"
+    CATEGORY = "ControlPreprocessHaruhi"
+  
+    def preprocess_image(self, ref_image=None, resolution=512):
+        # 使用传入的参数更新类属性
+        # ref_image = ref_image if ref_image is not None else ref_image
+        # ref_images_path = ref_images_path if ref_images_path is not None else ref_images_path
+        # mode = mode
+        # import torchvision.transforms as transforms
+        if ref_image is not None:
+            # 直接图像处理
+            pil_images = []
+            for image in ref_image:
+                    np_img = openImage(image)
+                    np_img_uint8 = np.round(np_img * 255.0).astype(np.uint8)
+                    # lsd_img_ = lsd_img(np_img_uint8)
+                    poses = getPoses(np_img_uint8)
+                    keypoints = getFaceKeypoints(poses)
+                    colored_img = draw_colored_keypoints(keypoints, resolution=resolution)
+                    # colored_img.show()
+                    # lsd_img_.show()
+                    # blended_image = blend_images(colored_img, lsd_img_)
+                    # to_tensor = transforms.ToTensor()
+
+                    if keypoints != []:
+                        pil_images.append(colored_img)
+                    else:
+                        raise ValueError("No Faces received")
+                    # print(len(pil_images))
+            pil_images_tensor = convert_images_to_tensor(pil_images)
+            return pil_images_tensor
+
+        else:
+            raise ValueError("No Face received")
 
 
 NODE_CLASS_MAPPINGS = {
-    "Ref_Image_Preprocessing": ImagePreprocessingNode,
-    #"PhotoMaker_Generation": CompositeImageGenerationNode_Zho
+    "Ref_Image_Preprocessing_mix_v1": ImagePreprocessingNode_mix_v1,
+    "Ref_Image_Preprocessing_facepose_v2": ImagePreprocessingNode_facepose_v2,
+    "Ref_Image_Preprocessing_mix_v1": ImagePreprocessingNode_mix_v1,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "Ref_Image_Preprocessing": "📷Ref Image Preprocessing",
+    "Ref_Image_Preprocessing_mix_v1": "📷Ref Image Preprocessing_mix_v1",
+    "Ref_Image_Preprocessing_facepose_v2": "📷Ref Image Preprocessing_facepose_v2",
     #"PhotoMaker_Generation": "📷PhotoMaker Generation"
 }
 
