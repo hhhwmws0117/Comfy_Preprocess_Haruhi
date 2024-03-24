@@ -17,6 +17,20 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 from open_pose import OpenposeDetector, draw_poses, PoseResult
 from util import resize_image_with_pad, common_input_validate, HWC3
 
+
+import mediapipe as mp
+from facemesh import FaceMesh
+
+face_mesh = mp.solutions.face_mesh.FaceMesh(
+    static_image_mode=True,
+    max_num_faces=1,
+    refine_landmarks=True,
+    min_detection_confidence=0.5)
+
+mesher = FaceMesh(face_mesh)
+
+
+
 class LineartStandardDetector:
     def __call__(self, input_image=None, guassian_sigma=6.0, intensity_threshold=8, detect_resolution=512, output_type=None, upscale_method="INTER_CUBIC", **kwargs):
         input_image, output_type = common_input_validate(input_image, output_type, **kwargs)
@@ -69,6 +83,28 @@ def getFaceKeypoints(poses):
     for point in poses.face:
         lst.append((point.x, point.y))
     return lst
+
+
+def masked_LineartStandardDetector(origin_image):
+    image_mask = mesher.draw(origin_image)
+    image_a = Image.fromarray(image_mask)
+    image_b = lsd_img(origin_image)
+
+    image_a = image_a.resize((512, 512))
+    # 将 image_a 转换为灰度图，然后转换为 numpy 数组
+    mask = np.array(image_a.convert('L')) < 128  # 假设黑色像素的值小于128，用于创建遮罩
+
+    # 将 image_b 转换为数组以便操作
+    image_b_array = np.array(image_b)
+
+    # 应用遮罩，不想保留的部分设为0
+    # 注意：这里假设 image_b 是 RGB 图片，如果是灰度图需要调整
+    result_array = np.zeros_like(image_b_array)
+    result_array[mask] = image_b_array[mask]
+
+    # 将结果数组转换回图片
+    result_image = Image.fromarray(result_array)
+    return result_image
 
 # Initialize a blank 512x512 image
 # img = Image.new('RGB', (512, 512), 'black')
@@ -266,6 +302,61 @@ class ImagePreprocessingNode_mix_v1:
         else:
             raise ValueError("No Face received")
 
+class ImagePreprocessingNode_maskedlineart_v2:
+    def __init__(self, ref_image=None):
+        self.ref_image = ref_image
+        # self.ref_images_path = ref_images_path
+        # self.mode = mode
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "ref_image": ("IMAGE",)  # 直接输入图像（可选）
+                
+                # "mode": ([, "path_Input"], {"default": "direct_Input"})  # 选择模式
+            },
+            "optional": {
+                 "resolution": ("INT", {"default": 512, "min": 64, "max": 2048, "step": 64})
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    FUNCTION = "preprocess_image_maskedlineart_v2"
+    CATEGORY = "ControlPreprocessHaruhi"
+  
+    def preprocess_image(self, ref_image=None, resolution=512):
+        # 使用传入的参数更新类属性
+        # ref_image = ref_image if ref_image is not None else ref_image
+        # ref_images_path = ref_images_path if ref_images_path is not None else ref_images_path
+        # mode = mode
+        # import torchvision.transforms as transforms
+        if ref_image is not None:
+            # 直接图像处理
+            pil_images = []
+            for image in ref_image:
+                    np_img = openImage(image)
+                    np_img_uint8 = np.round(np_img * 255.0).astype(np.uint8)
+                    lsd_img_ = masked_LineartStandardDetector(np_img_uint8)
+                    poses = getPoses(np_img_uint8)
+                    keypoints = getFaceKeypoints(poses)
+                    # colored_img = draw_colored_keypoints(keypoints, resolution=resolution)
+                    # colored_img.show()
+                    # lsd_img_.show()
+                    # blended_image = blend_images(colored_img, lsd_img_)
+                    # to_tensor = transforms.ToTensor()
+
+                    if keypoints != []:
+                        pil_images.append(lsd_img_)
+                    else:
+                        raise ValueError("No Faces received")
+                    # print(len(pil_images))
+            pil_images_tensor = convert_images_to_tensor(pil_images)
+            return pil_images_tensor
+
+        else:
+            raise ValueError("No Face received")
+        
 class ImagePreprocessingNode_facepose_v2:
     def __init__(self, ref_image=None):
         self.ref_image = ref_image
@@ -321,16 +412,73 @@ class ImagePreprocessingNode_facepose_v2:
         else:
             raise ValueError("No Face received")
 
+class ImagePreprocessingNode_mix_v2:
+    def __init__(self, ref_image=None):
+        self.ref_image = ref_image
+        # self.ref_images_path = ref_images_path
+        # self.mode = mode
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "ref_image": ("IMAGE",)  # 直接输入图像（可选）
+                
+                # "mode": ([, "path_Input"], {"default": "direct_Input"})  # 选择模式
+            },
+            "optional": {
+                 "resolution": ("INT", {"default": 512, "min": 64, "max": 2048, "step": 64})
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    FUNCTION = "preprocess_image_mix_v2"
+    CATEGORY = "ControlPreprocessHaruhi"
+  
+    def preprocess_image(self, ref_image=None, resolution=512):
+        # 使用传入的参数更新类属性
+        # ref_image = ref_image if ref_image is not None else ref_image
+        # ref_images_path = ref_images_path if ref_images_path is not None else ref_images_path
+        # mode = mode
+        # import torchvision.transforms as transforms
+        if ref_image is not None:
+            # 直接图像处理
+            pil_images = []
+            for image in ref_image:
+                    np_img = openImage(image)
+                    np_img_uint8 = np.round(np_img * 255.0).astype(np.uint8)
+                    lsd_img_ = masked_LineartStandardDetector(np_img_uint8)
+                    poses = getPoses(np_img_uint8)
+                    keypoints = getFaceKeypoints(poses)
+                    colored_img = draw_colored_keypoints(keypoints, resolution=resolution)
+                    # colored_img.show()
+                    # lsd_img_.show()
+                    blended_image = blend_images(colored_img, lsd_img_)
+                    # to_tensor = transforms.ToTensor()
+
+                    if keypoints != []:
+                        pil_images.append(blended_image)
+                    else:
+                        raise ValueError("No Faces received")
+                    # print(len(pil_images))
+            pil_images_tensor = convert_images_to_tensor(pil_images)
+            return pil_images_tensor
+
+        else:
+            raise ValueError("No Face received")
+        
 
 NODE_CLASS_MAPPINGS = {
     "Ref_Image_Preprocessing_mix_v1": ImagePreprocessingNode_mix_v1,
     "Ref_Image_Preprocessing_facepose_v2": ImagePreprocessingNode_facepose_v2,
-    "Ref_Image_Preprocessing_mix_v1": ImagePreprocessingNode_mix_v1,
+    "Ref_Image_Preprocessing_maskedlineart_v2": ImagePreprocessingNode_maskedlineart_v2,
+    "Ref_Image_Preprocessing_mix_v2": ImagePreprocessingNode_mix_v2,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "Ref_Image_Preprocessing_mix_v1": "📷Ref Image Preprocessing_mix_v1",
     "Ref_Image_Preprocessing_facepose_v2": "📷Ref Image Preprocessing_facepose_v2",
-    #"PhotoMaker_Generation": "📷PhotoMaker Generation"
+    "Ref_Image_Preprocessing_maskedlineart_v2": "📷Ref Image Preprocessing_maskedlineart_v2",
+    "Ref_Image_Preprocessing_mix_v2": "📷Ref Image Preprocessing_mix_v2",
 }
 
