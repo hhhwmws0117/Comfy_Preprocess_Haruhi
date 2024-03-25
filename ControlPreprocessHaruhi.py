@@ -4,7 +4,7 @@ import os
 # import folder_paths
 # from PIL import Image
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageOps
 import numpy as np
 from typing import List, NamedTuple, Union
 from glob import glob
@@ -19,7 +19,31 @@ from util import resize_image_with_pad, common_input_validate, HWC3
 
 
 import mediapipe as mp
-from facemesh import FaceMesh
+
+class FaceMesh:
+    def __init__(self, face_mesh):
+        self.face_mesh = face_mesh
+        self.drawing_spec = mp.solutions.drawing_utils.DrawingSpec(thickness=1, circle_radius=1)
+
+    def draw(self, image):
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        results = self.face_mesh.process(image)
+        # background = np.zeros((image.shape[0], image.shape[1], 3), dtype=np.uint8)
+        # if results.multi_face_landmarks:
+        #     for face_landmarks in results.multi_face_landmarks:
+        #         mp.solutions.drawing_utils.draw_landmarks(
+        #             image=background,
+        #             landmark_list=face_landmarks,
+        #             connections=mp.solutions.face_mesh.FACEMESH_FACE_OVAL,
+        #             landmark_drawing_spec=None,
+        #             connection_drawing_spec=mp.solutions.drawing_styles.get_default_face_mesh_contours_style())
+        background = np.ones((image.shape[0], image.shape[1], 3), dtype=np.uint8) * 255
+        if results.multi_face_landmarks:
+            for face_landmarks in results.multi_face_landmarks:
+                points = [(int(landmark.x * image.shape[0]), int(landmark.y * image.shape[1])) for landmark in face_landmarks.landmark]
+            hull = cv2.convexHull(np.array(points))
+            cv2.fillConvexPoly(background, hull, 0)
+        return background
 
 face_mesh = mp.solutions.face_mesh.FaceMesh(
     static_image_mode=True,
@@ -218,33 +242,57 @@ from PIL import Image, ImageOps, ImageSequence
 import numpy as np
 
 def convert_images_to_tensor(image_list):
-    output_images_list = []
+    images = []
     for image_Image in image_list:
-        output_images = []
-        # output_masks = []
-        for i in ImageSequence.Iterator(image_Image):
-            i = ImageOps.exif_transpose(i)
-            if i.mode == 'I':
-                i = i.point(lambda i: i * (1 / 255))
-            image = i.convert("RGB")
-            image = np.array(image).astype(np.float32) / 255.0
-            image = torch.from_numpy(image)[None,]
-            # if 'A' in i.getbands():
-            #     mask = np.array(i.getchannel('A')).astype(np.float32) / 255.0
-            #     mask = 1. - torch.from_numpy(mask)
-            # else:
-            #     mask = torch.zeros((64,64), dtype=torch.float32, device="cpu")
-            output_images.append(image)
-            # output_ma/sks.append(mask.unsqueeze(0))
+        # output_images = []
+        # # output_masks = []
+        # for i in ImageSequence.Iterator(image_Image):
+        #     i = ImageOps.exif_transpose(i)
+        #     if i.mode == 'I':
+        #         i = i.point(lambda i: i * (1 / 255))
+        #     image = i.convert("RGB")
+        #     image = np.array(image).astype(np.float32) / 255.0
+        #     image = torch.from_numpy(image)[None,]
+        #     # if 'A' in i.getbands():
+        #     #     mask = np.array(i.getchannel('A')).astype(np.float32) / 255.0
+        #     #     mask = 1. - torch.from_numpy(mask)
+        #     # else:
+        #     #     mask = torch.zeros((64,64), dtype=torch.float32, device="cpu")
+        #     output_images.append(image)
+        #     # output_ma/sks.append(mask.unsqueeze(0))
 
-        if len(output_images) > 1:
-            output_image = torch.cat(output_images, dim=0)
-            # output_mask = torch.cat(output_masks, dim=0)
-        else:
-            output_image = output_images[0]
-            # output_mask = output_masks[0]
-        output_images_list.append(output_image)
-    return output_images_list
+        # if len(output_images) > 1:
+        #     output_image = torch.cat(output_images, dim=0)
+        #     # output_mask = torch.cat(output_masks, dim=0)
+        # else:
+        #     output_image = output_images[0]
+        #     # output_mask = output_masks[0]
+        # output_images_list.append(output_image)
+    # for image_path in dir_files:
+    #     if limit_images and image_count >= image_load_cap:
+    #         break
+    #     i = Image.open(image_path)
+        i = ImageOps.exif_transpose(image_Image)
+        image = i.convert("RGB")
+        image = np.array(image).astype(np.float32) / 255.0
+        image = torch.from_numpy(image)[None,]
+        # if 'A' in i.getbands():
+        #     mask = np.array(i.getchannel('A')).astype(np.float32) / 255.0
+        #     mask = 1. - torch.from_numpy(mask)
+        #     if not loaded_alpha:
+        #         loaded_alpha = True
+        #         zero_mask = torch.zeros((len(image[0]),len(image[0][0])), dtype=torch.float32, device="cpu")
+        #         masks = [zero_mask] * image_count
+        # else:
+        #     mask = zero_mask
+        images.append(image)
+        # masks.append(mask)
+        # image_count += 1
+    
+    if len(images) == 0:
+        raise FileNotFoundError(f"No images could be loaded from directory '{directory}'.")
+
+    return torch.cat(images, dim=0)
 
 
 class ImagePreprocessingNode_mix_v1:
@@ -270,7 +318,7 @@ class ImagePreprocessingNode_mix_v1:
     FUNCTION = "preprocess_image_mix_v1"
     CATEGORY = "ControlPreprocessHaruhi"
   
-    def preprocess_image(self, ref_image=None, resolution=512):
+    def preprocess_image_mix_v1(self, ref_image=None, resolution=512):
         # 使用传入的参数更新类属性
         # ref_image = ref_image if ref_image is not None else ref_image
         # ref_images_path = ref_images_path if ref_images_path is not None else ref_images_path
@@ -297,7 +345,7 @@ class ImagePreprocessingNode_mix_v1:
                         raise ValueError("No Faces received")
                     # print(len(pil_images))
             pil_images_tensor = convert_images_to_tensor(pil_images)
-            return pil_images_tensor
+            return (pil_images_tensor,)
 
         else:
             raise ValueError("No Face received")
@@ -325,7 +373,7 @@ class ImagePreprocessingNode_maskedlineart_v2:
     FUNCTION = "preprocess_image_maskedlineart_v2"
     CATEGORY = "ControlPreprocessHaruhi"
   
-    def preprocess_image(self, ref_image=None, resolution=512):
+    def preprocess_image_maskedlineart_v2(self, ref_image=None, resolution=512):
         # 使用传入的参数更新类属性
         # ref_image = ref_image if ref_image is not None else ref_image
         # ref_images_path = ref_images_path if ref_images_path is not None else ref_images_path
@@ -352,7 +400,7 @@ class ImagePreprocessingNode_maskedlineart_v2:
                         raise ValueError("No Faces received")
                     # print(len(pil_images))
             pil_images_tensor = convert_images_to_tensor(pil_images)
-            return pil_images_tensor
+            return (pil_images_tensor,)
 
         else:
             raise ValueError("No Face received")
@@ -380,7 +428,7 @@ class ImagePreprocessingNode_facepose_v2:
     FUNCTION = "preprocess_image_facepose_v2"
     CATEGORY = "ControlPreprocessHaruhi"
   
-    def preprocess_image(self, ref_image=None, resolution=512):
+    def preprocess_image_facepose_v2(self, ref_image=None, resolution=512):
         # 使用传入的参数更新类属性
         # ref_image = ref_image if ref_image is not None else ref_image
         # ref_images_path = ref_images_path if ref_images_path is not None else ref_images_path
@@ -407,7 +455,7 @@ class ImagePreprocessingNode_facepose_v2:
                         raise ValueError("No Faces received")
                     # print(len(pil_images))
             pil_images_tensor = convert_images_to_tensor(pil_images)
-            return pil_images_tensor
+            return (pil_images_tensor,)
 
         else:
             raise ValueError("No Face received")
@@ -435,7 +483,7 @@ class ImagePreprocessingNode_mix_v2:
     FUNCTION = "preprocess_image_mix_v2"
     CATEGORY = "ControlPreprocessHaruhi"
   
-    def preprocess_image(self, ref_image=None, resolution=512):
+    def preprocess_image_mix_v2(self, ref_image=None, resolution=512):
         # 使用传入的参数更新类属性
         # ref_image = ref_image if ref_image is not None else ref_image
         # ref_images_path = ref_images_path if ref_images_path is not None else ref_images_path
@@ -462,7 +510,7 @@ class ImagePreprocessingNode_mix_v2:
                         raise ValueError("No Faces received")
                     # print(len(pil_images))
             pil_images_tensor = convert_images_to_tensor(pil_images)
-            return pil_images_tensor
+            return (pil_images_tensor,)
 
         else:
             raise ValueError("No Face received")
